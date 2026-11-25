@@ -10,7 +10,7 @@
     <RootNamespace>LyricsStatus</RootNamespace>
     <AssemblyName>Lyricat</AssemblyName>
     <Product>Lyricat</Product>
-    <Version>3.11.0</Version>
+    <Version>3.11.1</Version>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 

@@ -120,6 +120,15 @@ public partial class MainWindow : Window
         _ = NativeMethods.DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));
     }
 
+    protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnPreviewMouseDown(e);
+        var hit = e.OriginalSource as DependencyObject;
+        while (hit is not null and not TextBox and not PasswordBox)
+            hit = hit is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(hit) : LogicalTreeHelper.GetParent(hit);
+        if (hit is null && Keyboard.FocusedElement is TextBox or PasswordBox) Keyboard.ClearFocus();
+    }
+
     void DragArea_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton == MouseButton.Left && e.ButtonState == MouseButtonState.Pressed) DragMove();
@@ -383,6 +392,7 @@ public partial class MainWindow : Window
         public required TextBlock Error;
         public required Canvas Overlay;
         public string Committed = "";
+        public bool Edited;
         public int Version;
         public bool Animating;
 
@@ -467,11 +477,12 @@ public partial class MainWindow : Window
                     eye.Content = show ? "\uED1A" : "\uE890";
                 };
                 grid.Children.Add(eye);
-                pass.LostFocus += (_, _) => _ = CommitAsync(field);
+                eye.Focusable = false;
+                pass.LostKeyboardFocus += (_, _) => _ = CommitAsync(field);
                 pass.KeyDown += (_, e) => { if (e.Key == Key.Enter) _ = CommitAsync(field); };
                 pass.PasswordChanged += (_, _) => ClearCheck(field);
             }
-            text.LostFocus += (_, _) => _ = CommitAsync(field);
+            text.LostKeyboardFocus += (_, _) => _ = CommitAsync(field);
             text.KeyDown += (_, e) => { if (e.Key == Key.Enter) _ = CommitAsync(field); };
             text.TextChanged += (_, _) => ClearCheck(field);
 
@@ -484,7 +495,8 @@ public partial class MainWindow : Window
 
     void ClearCheck(AccountField field)
     {
-        if (field.Value == field.Committed) return;
+        if (_loading) return;
+        field.Edited = true;
         field.Version++;
         field.Ring.Visibility = Visibility.Collapsed;
         field.Error.Visibility = Visibility.Collapsed;
@@ -531,7 +543,8 @@ public partial class MainWindow : Window
     async Task CommitAsync(AccountField field)
     {
         var value = field.Value;
-        if (value.Length == 0 || value == field.Committed) return;
+        if (value.Length == 0 || !field.Edited) return;
+        field.Edited = false;
         field.Committed = value;
         var (result, _) = await CheckAsync(field.Key);
         if (result is null || field.Value != value) return;
@@ -654,6 +667,7 @@ public partial class MainWindow : Window
         {
             Secrets.Set(field.Key, field.Value);
             field.Committed = field.Value;
+            field.Edited = false;
         }
         var missing = SecretFieldInfo.Where(f => Secrets.Get(f.Key).Length == 0).Select(f => f.Label).ToList();
         AccountsResult.Text = missing.Count > 0 ? "Saved. Still missing: " + string.Join(", ", missing) + "." : "Saved. Checking...";
