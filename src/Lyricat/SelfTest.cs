@@ -129,9 +129,16 @@ public static class SelfTest
 
         foreach (var (page, name) in w.DemoPages())
         {
-            page();
-            await Task.Delay(450);
-            Save(w, Path.Combine(folder, name + ".png"));
+            try
+            {
+                page();
+                await Task.Delay(450);
+                Save(w, Path.Combine(folder, name + ".png"));
+            }
+            catch (Exception e)
+            {
+                File.WriteAllText(Path.Combine(folder, name + ".error.txt"), e.ToString());
+            }
         }
 
         w.DemoPages().First().Show();

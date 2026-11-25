@@ -546,6 +546,8 @@ public partial class MainWindow : Window
     {
         var value = field.Value;
         if (value.Length == 0 || !field.Edited) return;
+        await Task.Delay(350);
+        if (_saving || !field.Edited) return;
         field.Edited = false;
         field.Committed = value;
         var (result, _) = await CheckAsync(field.Key);
@@ -555,7 +557,8 @@ public partial class MainWindow : Window
 
     static string? Greeting(string key, CheckResult result) => key switch
     {
-        Secrets.DiscordToken or Secrets.SpDc => result.Alias is { } name ? $"Hello, {name}!" : "Hello there!",
+        Secrets.DiscordToken => result.Alias is { } name ? $"Hello, {name}!" : "Hello there!",
+        Secrets.SpDc => result.Alias is { } name ? $"Hemlo, {name}!" : "Hemlo!",
         Secrets.ClientSecret => "Your Spotify app is ready!",
         _ => null,
     };
@@ -663,7 +666,16 @@ public partial class MainWindow : Window
         return backdrop;
     }
 
+    bool _saving;
+
     async void SaveAccounts_Click(object sender, RoutedEventArgs e)
+    {
+        _saving = true;
+        try { await SaveAccountsAsync(); }
+        finally { _saving = false; }
+    }
+
+    async Task SaveAccountsAsync()
     {
         foreach (var field in _fields.Values)
         {
@@ -677,6 +689,10 @@ public partial class MainWindow : Window
 
         var checks = await Task.WhenAll(
             CheckAsync(Secrets.DiscordToken), CheckAsync(Secrets.SpDc), CheckAsync(Secrets.ClientSecret));
+        foreach (var (result, fields) in checks)
+            if (result is { Ok: true })
+                foreach (var field in fields)
+                    if (field.Masked && Greeting(field.Key, result) is { } hello) _ = HelloAsync(field, hello);
         if (missing.Count > 0) return;
         AccountsResult.Text = checks.All(c => c.Result is { Ok: true })
             ? "Saved. Everything checks out!"
@@ -719,20 +735,16 @@ public partial class MainWindow : Window
 
     bool Instant => ReduceMotionOn || _demo;
 
-    // A hand-drawn arrow that curls in from the top right and draws itself from tail to tip.
+    // A slightly arched, whiteboard-style arrow that draws itself from tail to tip.
     void DrawArrow(AccountField field, double delay)
     {
         var box = (FrameworkElement)field.Text.Parent;
         var origin = box.TransformToVisual(Guides).Transform(new Point());
         var tip = new Point(origin.X + box.ActualWidth * 0.6, origin.Y - 3);
         Point At(double x, double y) => new(tip.X + x * 0.78, tip.Y + y * 0.78);
-        var segments = new[]
-        {
-            (At(92, -18), At(60, -70), At(28, -30), At(58, -26)),
-            (At(58, -26), At(84, -24), At(40, -60), tip),
-        };
+        var segments = new[] { (At(86, -34), At(66, -56), At(20, -48), tip) };
         var tail = segments[0].Item1;
-        var c2 = segments[1].Item3;
+        var c2 = segments[^1].Item3;
 
         var figure = new PathFigure { StartPoint = tail };
         foreach (var (_, a, b, end) in segments) figure.Segments.Add(new BezierSegment(a, b, end, true));

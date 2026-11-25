@@ -23,8 +23,8 @@ public static class AccountCheck
     {
         try
         {
-            await spotify.EnsureTokenAsync(spDc, force: true);
-            return new(true, await spotify.GetDisplayNameAsync(), null);
+            await spotify.EnsureTokenAsync(spDc, force: true, wantProfile: true);
+            return new(true, spotify.ProfileName, null);
         }
         catch (SpotifyAuthException e) when (e.Message.Contains("anonymous"))
         {

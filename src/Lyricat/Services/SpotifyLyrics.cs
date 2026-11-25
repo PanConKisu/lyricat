@@ -16,13 +16,13 @@ public sealed class SpotifyLyrics(HttpClient http, Dispatcher ui, Func<IntPtr> h
     DateTime _expires;
     readonly Dictionary<string, IReadOnlyList<LyricLine>> _cache = [];
 
-    public async Task EnsureTokenAsync(string spDc, bool force = false)
+    public async Task EnsureTokenAsync(string spDc, bool force = false, bool wantProfile = false)
     {
         if (!force && _token is not null && DateTime.UtcNow < _expires.AddMinutes(-2)) return;
-        await ui.InvokeAsync(() => CaptureAsync(spDc)).Task.Unwrap();
+        await ui.InvokeAsync(() => CaptureAsync(spDc, wantProfile)).Task.Unwrap();
     }
 
-    async Task CaptureAsync(string spDc)
+    async Task CaptureAsync(string spDc, bool wantProfile)
     {
         var env = await CoreWebView2Environment.CreateAsync(null, Paths.WebViewData);
         var options = env.CreateCoreWebView2ControllerOptions();
@@ -45,9 +45,26 @@ public sealed class SpotifyLyrics(HttpClient http, Dispatcher ui, Func<IntPtr> h
 
             var tokenTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var clientTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var profileTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             web.WebResourceResponseReceived += async (_, e) =>
             {
                 var uri = e.Request.Uri;
+                if (wantProfile && uri.Contains("api-partner.spotify.com/pathfinder") && !profileTcs.Task.IsCompleted
+                    && e.Response.StatusCode == 200)
+                {
+                    try
+                    {
+                        using var body = await e.Response.GetContentAsync();
+                        using var reader = new StreamReader(body);
+                        using var doc = JsonDocument.Parse(await reader.ReadToEndAsync());
+                        if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("me", out var me)
+                            && me.TryGetProperty("profile", out var profile) && profile.TryGetProperty("name", out var name)
+                            && name.GetString() is { Length: > 0 } profileName)
+                            profileTcs.TrySetResult(profileName);
+                    }
+                    catch (Exception) { }
+                    return;
+                }
                 var target = uri.Contains("open.spotify.com/api/token") ? tokenTcs
                            : uri.Contains("clienttoken.spotify.com/v1/clienttoken") ? clientTcs
                            : null;
@@ -68,6 +85,11 @@ public sealed class SpotifyLyrics(HttpClient http, Dispatcher ui, Func<IntPtr> h
             string? clientJson = null;
             try { clientJson = await clientTcs.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
             catch (TimeoutException) { }
+            if (wantProfile)
+            {
+                try { ProfileName = await profileTcs.Task.WaitAsync(TimeSpan.FromSeconds(8)); }
+                catch (TimeoutException) { ProfileName = null; }
+            }
 
             using (var doc = JsonDocument.Parse(tokenJson))
             {
@@ -166,18 +188,7 @@ public sealed class SpotifyLyrics(HttpClient http, Dispatcher ui, Func<IntPtr> h
         return TrackFeatures.Unknown;
     }
 
-    public async Task<string?> GetDisplayNameAsync()
-    {
-        try
-        {
-            using var req = SpclientRequest("https://api.spotify.com/v1/me");
-            using var res = await http.SendAsync(req);
-            if (!res.IsSuccessStatusCode) return null;
-            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
-            return doc.RootElement.TryGetProperty("display_name", out var n) && n.GetString() is { Length: > 0 } name ? name : null;
-        }
-        catch (Exception) { return null; }
-    }
+    public string? ProfileName { get; private set; }
 
     HttpRequestMessage SpclientRequest(string url)
     {
