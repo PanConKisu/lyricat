@@ -111,7 +111,7 @@ public partial class MainWindow : Window
         if (!Secrets.HasAll()) ShowMissingGuides();
 
         if (_settings.CheckUpdates && !SkipDisclaimer)
-            ShowRelease(await Updater.CheckAsync(Http));
+            ShowStatus(await Updater.CheckAsync(Http));
     }
 
     void ApplyWindowEffects()
@@ -1132,19 +1132,31 @@ public partial class MainWindow : Window
         Toast.BeginAnimation(OpacityProperty, show);
     }
 
-    void ShowRelease(Release? release)
+    void ShowStatus(UpdateStatus? status)
     {
-        _release = release;
-        UpdateButton.Visibility = release is null ? Visibility.Collapsed : Visibility.Visible;
-        if (release is not null) UpdateText.Text = $"Update to {release.Tag}";
+        if (status is null) return;
+        _release = status.Newer;
+        UpdateButton.Visibility = status.Newer is null ? Visibility.Collapsed : Visibility.Visible;
+        if (status.Newer is not null) UpdateText.Text = $"Update to {status.Newer.Tag}";
+
+        var latest = status.Behind == 0;
+        AboutStatus.Text = latest
+            ? "  ·  You are running the latest version, YIPEEEE!!!!1"
+            : $"  ·  You're {status.Behind} version{(status.Behind == 1 ? "" : "s")} behind!";
+        AboutStatus.Foreground = (Brush)FindResource(latest ? "Safe" : "Questionable");
     }
 
     async void CheckUpdates_Click(object sender, RoutedEventArgs e)
     {
         UpdateResult.Text = "Checking...";
-        var release = await Updater.CheckAsync(Http);
-        ShowRelease(release);
-        UpdateResult.Text = release is null ? "You're on the latest version." : $"{release.Tag} is available — use the button on the left.";
+        var status = await Updater.CheckAsync(Http);
+        ShowStatus(status);
+        UpdateResult.Text = status switch
+        {
+            null => "Couldn't reach GitHub, try again in a bit.",
+            { Newer: { } newer } => $"{newer.Tag} is available, use the button on the left.",
+            _ => "",
+        };
     }
 
     async void Update_Click(object sender, RoutedEventArgs e)
@@ -1194,6 +1206,7 @@ public partial class MainWindow
         DiscordStatus.Text = "this is the line playing now - here comes the next one";
         StatsText.Text = "During this song the status changed 1.2 times every 5 seconds  |  Changes during this session: 48";
         AllTimeText.Text = "All-time status changes: 1,234";
+        ShowStatus(new UpdateStatus(null, 0));
         ShowFeatures(new TrackFeatures(128, 0.84, 0.71, 0.06));
     }
 
@@ -1205,6 +1218,7 @@ public partial class MainWindow
         (() => NavSettings.IsChecked = true, "settings"),
         (() => { NavSettings.IsChecked = true; PageSettings.ScrollToEnd(); }, "settings-bottom"),
         (() => NavAbout.IsChecked = true, "about"),
+        (() => { NavAbout.IsChecked = true; PageAbout.ScrollToVerticalOffset(330); }, "about-version"),
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 0; EarATurn.Angle = 0; }, "now-playing-dracani"),
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 9; EarATurn.Angle = -9; }, "now-playing-dracani-ears"),
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 9; EarATurn.Angle = -9;

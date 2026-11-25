@@ -554,7 +554,9 @@
                             <Button DockPanel.Dock="Right" Style="{StaticResource SoftButton}" Content="Check for updates"
                                     Click="CheckUpdates_Click" VerticalAlignment="Center" />
                             <StackPanel>
-                                <TextBlock x:Name="AboutVersion" Text="Lyricat" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap">
+                                    <Run x:Name="AboutVersion" Text="Lyricat" /><Run x:Name="AboutStatus" FontSize="13" FontWeight="Normal" />
+                                </TextBlock>
                                 <TextBlock Style="{StaticResource Hint}">
                                     <Hyperlink Style="{StaticResource Link}" Click="OpenRepo_Click">Source code on GitHub</Hyperlink>
                                     <Run Text="  ·  MIT License" />
