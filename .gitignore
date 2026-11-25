@@ -1,0 +1,12 @@
+# .NET build output
+bin/
+obj/
+publish/
+*.user
+.vs/
+dist/
+
+# Personal data: never committed
+.env
+.spotify_oauth.json
+config.json

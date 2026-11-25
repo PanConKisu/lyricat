@@ -1,0 +1,63 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $v = if ("${{ github.ref }}".StartsWith("refs/tags/v")) { "${{ github.ref_name }}".TrimStart("v") } else { "0.0.0" }
+          "value=$v" >> $env:GITHUB_OUTPUT
+          "Version: $v"
+
+      - name: Publish
+        run: >
+          dotnet publish src/Lyricat/Lyricat.csproj
+          -c Release -o publish
+          -p:Version=${{ steps.version.outputs.value }}
+
+      - name: Self-test
+        shell: pwsh
+        run: |
+          $p = Start-Process publish\Lyricat.exe -ArgumentList "--selftest","selftest.txt" -PassThru -Wait
+          Get-Content selftest.txt
+          if ($p.ExitCode -ne 0) { throw "The .exe self-test failed" }
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash publish\Lyricat.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  Lyricat.exe" | Set-Content publish\Lyricat.exe.sha256 -NoNewline
+          "SHA256: $h"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lyricat
+          path: |
+            publish/Lyricat.exe
+            publish/Lyricat.exe.sha256
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            publish/Lyricat.exe
+            publish/Lyricat.exe.sha256
+          generate_release_notes: true
