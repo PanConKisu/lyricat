@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using Shapes = System.Windows.Shapes;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -107,7 +108,7 @@ public partial class MainWindow : Window
         _lyrics = new SpotifyLyrics(Http, Dispatcher, () => hwnd);
 
         if (!_settings.AcceptedDisclaimer && !SkipDisclaimer) DisclaimerOverlay.Visibility = Visibility.Visible;
-        if (!Secrets.HasAll()) NavAccounts.IsChecked = true;
+        if (!Secrets.HasAll()) ShowMissingGuides();
 
         if (_settings.CheckUpdates && !SkipDisclaimer)
             ShowRelease(await Updater.CheckAsync(Http));
@@ -156,6 +157,7 @@ public partial class MainWindow : Window
         PageAccounts.Visibility = NavAccounts.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PageSettings.Visibility = NavSettings.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PageAbout.Visibility = NavAbout.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (NavAccounts.IsChecked != true) ClearGuides();
 
         var page = new[] { PageNow, PageAccounts, PageSettings, (FrameworkElement)PageAbout }
             .First(p => p.Visibility == Visibility.Visible);
@@ -186,8 +188,7 @@ public partial class MainWindow : Window
         }
         if (!Secrets.HasAll())
         {
-            Toast_Show("Fill in your accounts first");
-            NavAccounts.IsChecked = true;
+            ShowMissingGuides();
             return;
         }
 
@@ -496,6 +497,7 @@ public partial class MainWindow : Window
     void ClearCheck(AccountField field)
     {
         if (_loading) return;
+        if (field.Value.Length > 0) HideGuide(field.Key);
         field.Edited = true;
         field.Version++;
         field.Ring.Visibility = Visibility.Collapsed;
@@ -671,6 +673,7 @@ public partial class MainWindow : Window
         }
         var missing = SecretFieldInfo.Where(f => Secrets.Get(f.Key).Length == 0).Select(f => f.Label).ToList();
         AccountsResult.Text = missing.Count > 0 ? "Saved. Still missing: " + string.Join(", ", missing) + "." : "Saved. Checking...";
+        if (missing.Count > 0) ShowMissingGuides();
 
         var checks = await Task.WhenAll(
             CheckAsync(Secrets.DiscordToken), CheckAsync(Secrets.SpDc), CheckAsync(Secrets.ClientSecret));
@@ -678,6 +681,170 @@ public partial class MainWindow : Window
         AccountsResult.Text = checks.All(c => c.Result is { Ok: true })
             ? "Saved. Everything checks out!"
             : "Saved, but something didn't check out: see the fields marked in red.";
+    }
+
+    readonly Dictionary<string, UIElement[]> _guides = [];
+    TextBlock? _guideText;
+
+    void ShowMissingGuides()
+    {
+        NavAccounts.IsChecked = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            ClearGuides();
+            var missing = _fields.Values.Where(f => f.Value.Length == 0).ToList();
+            if (missing.Count == 0) return;
+            for (var i = 0; i < missing.Count; i++) DrawArrow(missing[i], i * 0.14);
+            ShowGuideText(missing.Count == 1 ? "This one is missing!" : "These are missing!", 0.3);
+        });
+    }
+
+    void ClearGuides()
+    {
+        foreach (var key in _guides.Keys.ToList()) HideGuide(key);
+        if (_guideText is not null) Guides.Children.Remove(_guideText);
+        _guideText = null;
+    }
+
+    void HideGuide(string key)
+    {
+        if (!_guides.Remove(key, out var parts)) return;
+        foreach (var part in parts)
+        {
+            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(250));
+            fade.Completed += (_, _) => Guides.Children.Remove(part);
+            part.BeginAnimation(OpacityProperty, fade);
+        }
+    }
+
+    bool Instant => ReduceMotionOn || _demo;
+
+    // A hand-drawn arrow that curls in from the top right and draws itself from tail to tip.
+    void DrawArrow(AccountField field, double delay)
+    {
+        var box = (FrameworkElement)field.Text.Parent;
+        var origin = box.TransformToVisual(Guides).Transform(new Point());
+        var tip = new Point(origin.X + box.ActualWidth * 0.6, origin.Y - 3);
+        Point At(double x, double y) => new(tip.X + x * 0.78, tip.Y + y * 0.78);
+        var segments = new[]
+        {
+            (At(92, -18), At(60, -70), At(28, -30), At(58, -26)),
+            (At(58, -26), At(84, -24), At(40, -60), tip),
+        };
+        var tail = segments[0].Item1;
+        var c2 = segments[1].Item3;
+
+        var figure = new PathFigure { StartPoint = tail };
+        foreach (var (_, a, b, end) in segments) figure.Segments.Add(new BezierSegment(a, b, end, true));
+        var brush = (Brush)FindResource("Primary");
+        const double thickness = 2.5;
+        var body = new Shapes.Path
+        {
+            Data = new PathGeometry([figure]), Stroke = brush, StrokeThickness = thickness,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+        };
+
+        var direction = tip - c2;
+        direction.Normalize();
+        static Vector Turn(Vector v, double degrees)
+        {
+            var r = degrees * Math.PI / 180;
+            return new Vector(v.X * Math.Cos(r) - v.Y * Math.Sin(r), v.X * Math.Sin(r) + v.Y * Math.Cos(r));
+        }
+        var head = new Shapes.Path
+        {
+            Data = new PathGeometry([new PathFigure(tip - Turn(direction, 32) * 9,
+                [new LineSegment(tip, true), new LineSegment(tip - Turn(direction, -32) * 9, true)], false)]),
+            Stroke = brush, StrokeThickness = thickness, StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+            RenderTransformOrigin = new Point(0, 0), RenderTransform = new ScaleTransform(1, 1, tip.X, tip.Y),
+        };
+        Guides.Children.Add(body);
+        Guides.Children.Add(head);
+        _guides[field.Key] = [body, head];
+        if (Instant) return;
+
+        double length = 0;
+        foreach (var (p0, a, b, p1) in segments)
+        {
+            var last = p0;
+            for (var i = 1; i <= 40; i++)
+            {
+                var t = i / 40.0;
+                var u = 1 - t;
+                var p = new Point(
+                    u * u * u * p0.X + 3 * u * u * t * a.X + 3 * u * t * t * b.X + t * t * t * p1.X,
+                    u * u * u * p0.Y + 3 * u * u * t * a.Y + 3 * u * t * t * b.Y + t * t * t * p1.Y);
+                length += (p - last).Length;
+                last = p;
+            }
+        }
+        var dash = length / thickness + 1;
+        body.StrokeDashArray = [dash, dash];
+        body.StrokeDashOffset = dash;
+        body.BeginAnimation(Shapes.Shape.StrokeDashOffsetProperty, new DoubleAnimation(dash, 0, TimeSpan.FromMilliseconds(700))
+        {
+            BeginTime = TimeSpan.FromSeconds(delay),
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        });
+
+        head.Opacity = 0;
+        var headAt = TimeSpan.FromSeconds(delay + 0.64);
+        head.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)) { BeginTime = headAt });
+        var pop = new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(260))
+        {
+            BeginTime = headAt, EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.5 },
+        };
+        head.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+        head.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+    }
+
+    // Peeks in, bounces a little (smaller, bigger, bigger, smaller, a bit bigger), then fades away.
+    void ShowGuideText(string message, double delay)
+    {
+        var text = new TextBlock
+        {
+            Text = message, FontSize = 22, FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("Deep"), RenderTransformOrigin = new Point(0.5, 0.5),
+        };
+        var scale = new ScaleTransform(1, 1);
+        text.RenderTransform = scale;
+        var anchor = AccountsResult.TransformToVisual(Guides).Transform(new Point());
+        Canvas.SetLeft(text, anchor.X);
+        Canvas.SetTop(text, anchor.Y + 26);
+        Guides.Children.Add(text);
+        _guideText = text;
+        if (Instant) return;
+
+        var start = TimeSpan.FromSeconds(delay);
+        var bounce = new DoubleAnimationUsingKeyFrames { BeginTime = start };
+        void Key(double value, int ms, IEasingFunction ease) =>
+            bounce.KeyFrames.Add(new EasingDoubleKeyFrame(value, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(ms)), ease));
+        var outEase = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var inOut = new SineEase { EasingMode = EasingMode.EaseInOut };
+        Key(0, 0, inOut);
+        Key(1.14, 320, outEase);
+        Key(0.93, 450, inOut);
+        Key(1.07, 580, inOut);
+        Key(1.12, 680, inOut);
+        Key(0.96, 820, inOut);
+        Key(1.04, 960, inOut);
+        Key(1.04, 2700, inOut);
+        Key(0.7, 3050, new CubicEase { EasingMode = EasingMode.EaseIn });
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, bounce);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
+
+        var fade = new DoubleAnimationUsingKeyFrames { BeginTime = start };
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200))));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2700))));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3050))));
+        fade.Completed += (_, _) =>
+        {
+            Guides.Children.Remove(text);
+            if (_guideText == text) _guideText = null;
+        };
+        text.BeginAnimation(OpacityProperty, fade);
     }
 
     void OpenDashboard_Click(object sender, RoutedEventArgs e) => Open("https://developer.spotify.com/dashboard");
@@ -1012,6 +1179,7 @@ public partial class MainWindow
     [
         (() => NavNow.IsChecked = true, "now-playing"),
         (() => { NavAccounts.IsChecked = true; DemoAccounts(); }, "accounts"),
+        (() => { DemoMissing(); }, "accounts-missing"),
         (() => NavSettings.IsChecked = true, "settings"),
         (() => { NavSettings.IsChecked = true; PageSettings.ScrollToEnd(); }, "settings-bottom"),
         (() => NavAbout.IsChecked = true, "about"),
@@ -1020,6 +1188,25 @@ public partial class MainWindow
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 9; EarATurn.Angle = -9;
                  HeadTilt.Angle = 3; HeadBob.Y = 3; PawLUp.Y = -4; }, "now-playing-dracani-dance"),
     ];
+
+    void DemoMissing()
+    {
+        DemoAccounts();
+        foreach (var f in _fields.Values)
+        {
+            f.Ring.Visibility = f.Error.Visibility = Visibility.Collapsed;
+            f.Status.Text = "";
+            f.Pass?.ClearValue(UIElement.OpacityMaskProperty);
+            f.Overlay.Children.Clear();
+        }
+        _fields[Secrets.SpDc].Pass!.Password = "";
+        _fields[Secrets.ClientSecret].Pass!.Password = "";
+        UpdateLayout();
+        ClearGuides();
+        DrawArrow(_fields[Secrets.SpDc], 0);
+        DrawArrow(_fields[Secrets.ClientSecret], 0);
+        ShowGuideText("These are missing!", 0);
+    }
 
     void DemoAccounts()
     {
