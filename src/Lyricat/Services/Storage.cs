@@ -62,7 +62,7 @@ public sealed class Settings
     [JsonPropertyName("check_updates")] public bool CheckUpdates { get; set; } = true;
     [JsonPropertyName("join_lines")] public bool JoinFastLines { get; set; }
     [JsonPropertyName("join_separator")] public string JoinSeparator { get; set; } = "-";
-    [JsonPropertyName("mascot")] public string Mascot { get; set; } = Mascots.Concept;
+    [JsonPropertyName("mascot")] public string Mascot { get; set; } = Mascots.Dracani;
     [JsonPropertyName("ears_dance")] public bool EarsDance { get; set; } = true;
     [JsonPropertyName("reduce_motion")] public bool ReduceMotion { get; set; }
     [JsonPropertyName("accepted_disclaimer")] public bool AcceptedDisclaimer { get; set; }
@@ -105,7 +105,7 @@ public sealed class Settings
         LyricsOffset = Math.Round(Math.Clamp(LyricsOffset, -3, 3), 1);
         StatusFormat = string.IsNullOrWhiteSpace(StatusFormat) ? "{line}" : StatusFormat;
         Emoji ??= ""; NoLyricsText ??= ""; PauseText ??= ""; PausedText ??= ""; JoinSeparator ??= "-";
-        if (Mascot is not (Mascots.Concept or Mascots.Dracani)) Mascot = Mascots.Concept;
+        if (Mascot is not (Mascots.Concept or Mascots.Dracani)) Mascot = Mascots.Dracani;
         return this;
     }
 

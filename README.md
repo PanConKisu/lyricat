@@ -75,7 +75,7 @@ The first time you turn on **Sharing** (bottom left), your browser opens so you 
 | Show two lines at once | Off | Sends lines in pairs as one status, joined by a separator (`-` by default) |
 | Stop if Discord rate-limits me | On | Stops at the first 429 |
 | Check for updates on startup | On | Only checks; nothing installs without your click |
-| Who peeks over the card | Ninu Concept | Ninu Concept or Ninu by Dracani |
+| Who peeks over the card | Ninu by Dracani | Ninu by Dracani or Ninu Concept |
 | Ninu dances to the music | On | Ninu by Dracani moves her ears to the beat, and her head and paws too on high-energy songs |
 | Reduce motion | Off | Stops the BPM heart and the sliding bars (Ninu's dance has its own switch) |
 
