@@ -26,7 +26,7 @@ public sealed class RateLimitedException(string service, double retryAfter)
 
 public sealed class SpotifyApi(HttpClient http, string clientId, string clientSecret)
 {
-    const string RedirectUri = "http://127.0.0.1:8888/callback";
+    public const string RedirectUri = "http://127.0.0.1:8888/callback";
     const string Scopes = "user-read-currently-playing user-read-playback-state";
 
     string? _accessToken;

@@ -55,7 +55,7 @@ Open the **Accounts** page and fill in these four things (hover the **?** next t
 
 1. Go to the [Spotify developer dashboard](https://developer.spotify.com/dashboard) and click *Create app*.
 2. Pick any name and description.
-3. Set the *Redirect URI* to exactly `http://127.0.0.1:8888/callback`.
+3. Set the *Redirect URI* to exactly `http://127.0.0.1:8888/callback` (the **Copy redirect URI** button in *Accounts* copies it for you).
 4. Tick only **Web API** and save.
 5. Copy the *Client ID* and *Client Secret* from its settings.
 

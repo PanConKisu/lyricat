@@ -31,10 +31,10 @@ public partial class MainWindow : Window
             "4. Click a request → Headers → copy 'authorization'.\n\nNever share it: it gives full access to your account."),
         (Secrets.SpDc, "Spotify sp_dc cookie", true,
             "1. Open open.spotify.com in your browser, logged in.\n2. Press F12 → Application → Cookies → open.spotify.com.\n" +
-            "3. Copy the value of 'sp_dc'.\n\nUsed to read the lyrics. Never share it."),
+            "3. Type 'sp_dc' in the filter box to find it fast.\n4. Copy its value.\n\nUsed to read the lyrics. Never share it."),
         (Secrets.ClientId, "Spotify app Client ID", false,
             "1. Create an app at developer.spotify.com/dashboard.\n2. Tick only 'Web API'.\n" +
-            "3. Redirect URI: http://127.0.0.1:8888/callback\n4. Copy the Client ID from its settings."),
+            "3. Redirect URI: http://127.0.0.1:8888/callback\n   (the 'Copy redirect URI' button copies it for you)\n4. Copy the Client ID from its settings."),
         (Secrets.ClientSecret, "Spotify app Client Secret", true,
             "In your Spotify app's settings, click 'View client secret' and copy it."),
     ];
@@ -860,6 +860,16 @@ public partial class MainWindow : Window
     }
 
     void OpenDashboard_Click(object sender, RoutedEventArgs e) => Open("https://developer.spotify.com/dashboard");
+
+    void CopyRedirect_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(SpotifyApi.RedirectUri);
+            Toast_Show("Redirect URI copied!");
+        }
+        catch (Exception) { Toast_Show("Couldn't copy it, try again"); }
+    }
     void OpenRepo_Click(object sender, RoutedEventArgs e) => Open(Updater.RepoUrl);
     void OpenDracani_Click(object sender, RoutedEventArgs e) => Open("https://linktr.ee/Dracani");
     void OpenKofi_Click(object sender, RoutedEventArgs e) => Open("https://ko-fi.com/panconkisu");

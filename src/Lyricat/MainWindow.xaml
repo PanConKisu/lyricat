@@ -314,6 +314,13 @@
                                 <TextBlock Text="Open Spotify dashboard" Foreground="{StaticResource Deep}" />
                             </StackPanel>
                         </Button>
+                        <Button Style="{StaticResource SoftButton}" Click="CopyRedirect_Click" Margin="10,0,0,0"
+                                ToolTip="http://127.0.0.1:8888/callback">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE8C8;" Style="{StaticResource Icon}" Foreground="{StaticResource Deep}" Margin="0,0,8,0" />
+                                <TextBlock Text="Copy redirect URI" Foreground="{StaticResource Deep}" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                     <TextBlock x:Name="AccountsResult" Style="{StaticResource Hint}" Margin="2,12,0,0" />
                 </StackPanel>
