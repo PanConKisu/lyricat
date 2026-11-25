@@ -500,6 +500,13 @@
                                        Text="I was bored, eating cookies, and wondered if this could be done. Long story short: it could, and here it is." />
                             <TextBlock Margin="0,12,0,0" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Deep}"
                                        Text="Made with lots of love. From Kisu to the world. ^w^" />
+                            <Button Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,14,0,0"
+                                    Click="OpenKofi_Click" ToolTip="ko-fi.com/panconkisu">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="♥" Margin="0,0,8,0" />
+                                    <TextBlock Text="Support me on Ko-fi" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Border>
 

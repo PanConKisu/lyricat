@@ -42,7 +42,7 @@ public partial class MainWindow : Window
 
     readonly Settings _settings = Settings.Load();
     readonly object _settingsLock = new();
-    readonly Dictionary<string, Func<string>> _secretReaders = [];
+    readonly Dictionary<string, AccountField> _fields = [];
     readonly DispatcherTimer _progressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
 
@@ -373,6 +373,23 @@ public partial class MainWindow : Window
         });
     }
 
+    sealed class AccountField
+    {
+        public required string Key;
+        public PasswordBox? Pass;
+        public required TextBox Text;
+        public required TextBlock Status;
+        public required Border Ring;
+        public required TextBlock Error;
+        public required Canvas Overlay;
+        public string Committed = "";
+        public int Version;
+        public bool Animating;
+
+        public string Value => (Pass is not null && Pass.Visibility == Visibility.Visible ? Pass.Password : Text.Text).Trim();
+        public bool Masked => Pass is not null && Pass.Visibility == Visibility.Visible;
+    }
+
     void BuildSecretFields()
     {
         foreach (var (key, label, secret, help) in SecretFieldInfo)
@@ -382,7 +399,7 @@ public partial class MainWindow : Window
             var header = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
             var helpIcon = new TextBlock
             {
-                Text = "", Style = (Style)FindResource("Icon"), FontSize = 13,
+                Text = "\uE9CE", Style = (Style)FindResource("Icon"), FontSize = 13,
                 Foreground = (Brush)FindResource("Primary"), Cursor = Cursors.Help,
                 ToolTip = new ToolTip { Content = new TextBlock { Text = help } }, Margin = new Thickness(6, 0, 0, 0),
             };
@@ -394,65 +411,265 @@ public partial class MainWindow : Window
             panel.Children.Add(header);
 
             var value = Secrets.Get(key);
+            var padding = new Thickness(12, 0, secret ? 64 : 36, 0);
+            var grid = new Grid();
+            var text = new TextBox { Text = value, Padding = padding };
+            PasswordBox? pass = null;
             if (secret)
             {
-                var grid = new Grid();
-                var pass = new PasswordBox { Password = value, Padding = new Thickness(12, 9, 40, 9) };
-                var plain = new TextBox { Text = value, Visibility = Visibility.Collapsed, Padding = new Thickness(12, 9, 40, 9) };
+                pass = new PasswordBox { Password = value, Padding = padding };
+                text.Visibility = Visibility.Collapsed;
+                grid.Children.Add(pass);
+            }
+            grid.Children.Add(text);
+
+            var overlay = new Canvas { ClipToBounds = true, IsHitTestVisible = false, Margin = new Thickness(0, 0, secret ? 64 : 36, 0) };
+            var ring = new Border
+            {
+                CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1.5),
+                BorderBrush = (Brush)FindResource("Dangerous"), IsHitTestVisible = false, Visibility = Visibility.Collapsed,
+            };
+            var status = new TextBlock
+            {
+                Style = (Style)FindResource("Icon"), FontSize = 13, IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, secret ? 40 : 14, 0),
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new RotateTransform(),
+            };
+            grid.Children.Add(overlay);
+            grid.Children.Add(ring);
+            grid.Children.Add(status);
+
+            var field = new AccountField
+            {
+                Key = key, Pass = pass, Text = text, Status = status, Ring = ring, Overlay = overlay,
+                Error = new TextBlock
+                {
+                    FontSize = 11, Foreground = (Brush)FindResource("Dangerous"), Margin = new Thickness(2, 5, 0, 0),
+                    Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap,
+                },
+                Committed = value,
+            };
+
+            if (pass is not null)
+            {
                 var eye = new Button
                 {
-                    Style = (Style)FindResource("IconButton"), Content = "", Width = 30, Height = 28,
+                    Style = (Style)FindResource("IconButton"), Content = "\uE890", Width = 30, Height = 28,
                     HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 5, 0), ToolTip = "Show / hide",
                 };
                 eye.Click += (_, _) =>
                 {
-                    var show = plain.Visibility != Visibility.Visible;
-                    if (show) plain.Text = pass.Password; else pass.Password = plain.Text;
-                    plain.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                    var show = text.Visibility != Visibility.Visible;
+                    if (show) text.Text = pass.Password; else pass.Password = text.Text;
+                    text.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
                     pass.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
-                    eye.Content = show ? "" : "";
+                    eye.Content = show ? "\uED1A" : "\uE890";
                 };
-                grid.Children.Add(pass);
-                grid.Children.Add(plain);
                 grid.Children.Add(eye);
-                panel.Children.Add(grid);
-                _secretReaders[key] = () => plain.Visibility == Visibility.Visible ? plain.Text : pass.Password;
+                pass.LostFocus += (_, _) => _ = CommitAsync(field);
+                pass.KeyDown += (_, e) => { if (e.Key == Key.Enter) _ = CommitAsync(field); };
+                pass.PasswordChanged += (_, _) => ClearCheck(field);
             }
-            else
-            {
-                var box = new TextBox { Text = value };
-                panel.Children.Add(box);
-                _secretReaders[key] = () => box.Text;
-            }
+            text.LostFocus += (_, _) => _ = CommitAsync(field);
+            text.KeyDown += (_, e) => { if (e.Key == Key.Enter) _ = CommitAsync(field); };
+            text.TextChanged += (_, _) => ClearCheck(field);
+
+            panel.Children.Add(grid);
+            panel.Children.Add(field.Error);
             SecretFields.Children.Add(panel);
+            _fields[key] = field;
         }
     }
 
-    async void SaveAccounts_Click(object sender, RoutedEventArgs e)
+    void ClearCheck(AccountField field)
     {
-        foreach (var (key, read) in _secretReaders) Secrets.Set(key, read());
-        var missing = SecretFieldInfo.Where(f => Secrets.Get(f.Key).Length == 0).Select(f => f.Label).ToList();
-        if (missing.Count > 0)
+        if (field.Value == field.Committed) return;
+        field.Version++;
+        field.Ring.Visibility = Visibility.Collapsed;
+        field.Error.Visibility = Visibility.Collapsed;
+        SetStatus(field, null);
+    }
+
+    void SetStatus(AccountField field, bool? ok)
+    {
+        var turn = (RotateTransform)field.Status.RenderTransform;
+        turn.BeginAnimation(RotateTransform.AngleProperty, null);
+        turn.Angle = 0;
+        switch (ok)
         {
-            AccountsResult.Text = "Saved. Still missing: " + string.Join(", ", missing) + ".";
-            return;
+            case true:
+                field.Status.Text = "\uE73E";
+                field.Status.Foreground = (Brush)FindResource("Safe");
+                break;
+            case false:
+                field.Status.Text = "\uE711";
+                field.Status.Foreground = (Brush)FindResource("Dangerous");
+                break;
+            default:
+                field.Status.Text = "";
+                break;
         }
-        AccountsResult.Text = "Saved. Checking Discord...";
-        try
+    }
+
+    void SetChecking(AccountField field)
+    {
+        field.Status.Text = "\uE72C";
+        field.Status.Foreground = (Brush)FindResource("Muted");
+        ((RotateTransform)field.Status.RenderTransform).BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9)) { RepeatBehavior = RepeatBehavior.Forever });
+    }
+
+    void ShowResult(AccountField field, CheckResult result)
+    {
+        SetStatus(field, result.Ok);
+        field.Ring.Visibility = result.Ok ? Visibility.Collapsed : Visibility.Visible;
+        field.Error.Text = result.Error ?? "";
+        field.Error.Visibility = result.Ok ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    async Task CommitAsync(AccountField field)
+    {
+        var value = field.Value;
+        if (value.Length == 0 || value == field.Committed) return;
+        field.Committed = value;
+        var (result, _) = await CheckAsync(field.Key);
+        if (result is null || field.Value != value) return;
+        if (result.Ok && field.Masked && Greeting(field.Key, result) is { } hello) await HelloAsync(field, hello);
+    }
+
+    static string? Greeting(string key, CheckResult result) => key switch
+    {
+        Secrets.DiscordToken or Secrets.SpDc => result.Alias is { } name ? $"Hello, {name}!" : "Hello there!",
+        Secrets.ClientSecret => "Your Spotify app is ready!",
+        _ => null,
+    };
+
+    async Task<(CheckResult? Result, AccountField[] Fields)> CheckAsync(string key)
+    {
+        AccountField[] involved = key is Secrets.ClientId or Secrets.ClientSecret
+            ? [_fields[Secrets.ClientId], _fields[Secrets.ClientSecret]]
+            : [_fields[key]];
+        if (involved.Any(f => f.Value.Length == 0)) return (null, involved);
+
+        var versions = involved.Select(f => ++f.Version).ToArray();
+        foreach (var f in involved) SetChecking(f);
+
+        var result = key switch
         {
-            var me = await new DiscordClient(Http, Secrets.Get(Secrets.DiscordToken)).GetMeAsync();
-            AccountsResult.Text = $"Saved ✓  Discord: connected as @{me.Username}. Spotify is checked when you press Start.";
+            Secrets.DiscordToken => await AccountCheck.DiscordAsync(Http, involved[0].Value),
+            Secrets.SpDc => await AccountCheck.SpotifyCookieAsync(CheckerSpotify(), involved[0].Value),
+            _ => await AccountCheck.SpotifyAppAsync(Http, involved[0].Value, involved[1].Value),
+        };
+
+        for (var i = 0; i < involved.Length; i++)
+            if (involved[i].Version == versions[i]) ShowResult(involved[i], result);
+        if (result.Discord is { } me)
+        {
             DiscordName.Text = me.DisplayName;
             DiscordUser.Text = "@" + me.Username;
             LoadImage(me.AvatarUrl, img => Avatar.Fill = new ImageBrush(img) { Stretch = Stretch.UniformToFill });
         }
-        catch (DiscordAuthException ex) { AccountsResult.Text = "Saved, but " + ex.Message; }
-        catch (Exception ex) { AccountsResult.Text = $"Saved, but couldn't reach Discord: {ex.Message}"; }
+        return (result, involved);
+    }
+
+    SpotifyLyrics? _checker;
+    SpotifyLyrics CheckerSpotify()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        return _checker ??= new SpotifyLyrics(Http, Dispatcher, () => hwnd);
+    }
+
+    async Task HelloAsync(AccountField field, string message)
+    {
+        if (field.Animating || field.Pass is not { } pass) return;
+        field.Animating = true;
+        var backdrop = AddBackdrop(pass);
+        try
+        {
+            var reduce = ReduceMotionOn;
+            var clear = new GradientStop(Colors.Transparent, -0.25);
+            var solid = new GradientStop(Colors.Black, 0);
+            pass.OpacityMask = new LinearGradientBrush(new GradientStopCollection { clear, solid }, new Point(0, 0.5), new Point(1, 0.5));
+
+            Task Sweep(double from, double to, int ms)
+            {
+                var done = new TaskCompletionSource();
+                var duration = TimeSpan.FromMilliseconds(reduce ? 1 : ms);
+                var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+                var a = new DoubleAnimation(from, to, duration) { EasingFunction = ease };
+                a.Completed += (_, _) => done.TrySetResult();
+                clear.BeginAnimation(GradientStop.OffsetProperty, a);
+                solid.BeginAnimation(GradientStop.OffsetProperty, new DoubleAnimation(from + 0.25, to + 0.25, duration) { EasingFunction = ease });
+                return done.Task;
+            }
+
+            await Sweep(-0.25, 1, 450);
+
+            var hello = new TextBlock
+            {
+                Text = message, FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)FindResource("Deep"), Opacity = 0,
+            };
+            hello.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetTop(hello, Math.Max(0, (field.Overlay.ActualHeight - hello.DesiredSize.Height) / 2));
+            field.Overlay.Children.Add(hello);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var slideIn = TimeSpan.FromMilliseconds(reduce ? 1 : 520);
+            hello.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation(field.Overlay.ActualWidth, 12, slideIn) { EasingFunction = ease });
+            hello.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, slideIn));
+            await Task.Delay(slideIn + TimeSpan.FromMilliseconds(1400));
+
+            var slideOut = TimeSpan.FromMilliseconds(reduce ? 1 : 420);
+            hello.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation(12, -hello.DesiredSize.Width * 0.4, slideOut)
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+            });
+            hello.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, slideOut));
+            await Sweep(1, -0.25, 520);
+            field.Overlay.Children.Remove(hello);
+        }
+        finally
+        {
+            pass.OpacityMask = null;
+            ((Grid)pass.Parent).Children.Remove(backdrop);
+            field.Animating = false;
+        }
+    }
+
+    Border AddBackdrop(PasswordBox pass)
+    {
+        var backdrop = new Border
+        {
+            CornerRadius = new CornerRadius(12), IsHitTestVisible = false,
+            Background = (Brush)FindResource(pass.IsKeyboardFocused ? "Surface" : "SurfaceSoft"),
+        };
+        ((Grid)pass.Parent).Children.Insert(0, backdrop);
+        return backdrop;
+    }
+
+    async void SaveAccounts_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var field in _fields.Values)
+        {
+            Secrets.Set(field.Key, field.Value);
+            field.Committed = field.Value;
+        }
+        var missing = SecretFieldInfo.Where(f => Secrets.Get(f.Key).Length == 0).Select(f => f.Label).ToList();
+        AccountsResult.Text = missing.Count > 0 ? "Saved. Still missing: " + string.Join(", ", missing) + "." : "Saved. Checking...";
+
+        var checks = await Task.WhenAll(
+            CheckAsync(Secrets.DiscordToken), CheckAsync(Secrets.SpDc), CheckAsync(Secrets.ClientSecret));
+        if (missing.Count > 0) return;
+        AccountsResult.Text = checks.All(c => c.Result is { Ok: true })
+            ? "Saved. Everything checks out!"
+            : "Saved, but something didn't check out: see the fields marked in red.";
     }
 
     void OpenDashboard_Click(object sender, RoutedEventArgs e) => Open("https://developer.spotify.com/dashboard");
     void OpenRepo_Click(object sender, RoutedEventArgs e) => Open(Updater.RepoUrl);
     void OpenDracani_Click(object sender, RoutedEventArgs e) => Open("https://linktr.ee/Dracani");
+    void OpenKofi_Click(object sender, RoutedEventArgs e) => Open("https://ko-fi.com/panconkisu");
 
     static void Open(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
@@ -780,7 +997,7 @@ public partial class MainWindow
     internal IEnumerable<(Action Show, string Name)> DemoPages() =>
     [
         (() => NavNow.IsChecked = true, "now-playing"),
-        (() => NavAccounts.IsChecked = true, "accounts"),
+        (() => { NavAccounts.IsChecked = true; DemoAccounts(); }, "accounts"),
         (() => NavSettings.IsChecked = true, "settings"),
         (() => { NavSettings.IsChecked = true; PageSettings.ScrollToEnd(); }, "settings-bottom"),
         (() => NavAbout.IsChecked = true, "about"),
@@ -789,6 +1006,29 @@ public partial class MainWindow
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 9; EarATurn.Angle = -9;
                  HeadTilt.Angle = 3; HeadBob.Y = 3; PawLUp.Y = -4; }, "now-playing-dracani-dance"),
     ];
+
+    void DemoAccounts()
+    {
+        foreach (var f in _fields.Values)
+        {
+            f.Text.Text = f.Key == Secrets.ClientId ? "0123456789abcdef0123456789abcdef" : "";
+            if (f.Pass is not null) f.Pass.Password = new string('x', 40);
+        }
+        ShowResult(_fields[Secrets.DiscordToken], new CheckResult(true, "Kitty", null));
+        ShowResult(_fields[Secrets.SpDc], new CheckResult(false, null, "An invalid cookie was provided."));
+        ShowResult(_fields[Secrets.ClientId], new CheckResult(true, null, null));
+        var secret = _fields[Secrets.ClientSecret];
+        SetChecking(secret);
+        ((RotateTransform)secret.Status.RenderTransform).BeginAnimation(RotateTransform.AngleProperty, null);
+        AddBackdrop(secret.Pass!);
+        secret.Pass!.OpacityMask = new LinearGradientBrush(new GradientStopCollection
+            { new(Colors.Transparent, 0.55), new(Colors.Black, 0.8) }, new Point(0, 0.5), new Point(1, 0.5));
+        secret.Overlay.Children.Add(new TextBlock
+        {
+            Text = "Your Spotify app is ready!", FontSize = 13, FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("Deep"), Margin = new Thickness(12, 11, 0, 0),
+        });
+    }
 
     internal void DemoAdvance(int index) => _carousel.MoveTo(index, 4, 5);
 

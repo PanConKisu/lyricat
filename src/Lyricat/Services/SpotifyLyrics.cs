@@ -166,6 +166,19 @@ public sealed class SpotifyLyrics(HttpClient http, Dispatcher ui, Func<IntPtr> h
         return TrackFeatures.Unknown;
     }
 
+    public async Task<string?> GetDisplayNameAsync()
+    {
+        try
+        {
+            using var req = SpclientRequest("https://api.spotify.com/v1/me");
+            using var res = await http.SendAsync(req);
+            if (!res.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            return doc.RootElement.TryGetProperty("display_name", out var n) && n.GetString() is { Length: > 0 } name ? name : null;
+        }
+        catch (Exception) { return null; }
+    }
+
     HttpRequestMessage SpclientRequest(string url)
     {
         var req = new HttpRequestMessage(HttpMethod.Get, url);
