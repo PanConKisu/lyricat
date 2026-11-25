@@ -55,6 +55,9 @@ public partial class MainWindow : Window
     Release? _release;
     bool _loading = true;
     bool _closing;
+    bool _quitting;
+    bool _checkedUpdates;
+    readonly TrayIcon _tray = new();
     string? _coverUrl;
 
     public bool SkipDisclaimer { get; init; }
@@ -85,6 +88,15 @@ public partial class MainWindow : Window
         _beats.Log += m => Dispatcher.BeginInvoke(() => AppendLog(m));
         _beats.Lost += () => Task.Delay(2000).ContinueWith(_ => Dispatcher.BeginInvoke(() => _beats.Restart()));
         StateChanged += (_, _) => UpdateEars();
+        IsVisibleChanged += (_, _) => UpdateEars();
+        _tray.Open += ShowFromTray;
+        _tray.ToggleShare += () =>
+        {
+            if (!_settings.AcceptedDisclaimer || !Secrets.HasAll()) ShowFromTray();
+            ShareToggle_Click(this, new RoutedEventArgs());
+        };
+        _tray.Quit += Quit;
+        Closed += (_, _) => _tray.Dispose();
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveSettings(); };
 
         SourceInitialized += (_, _) => ApplyWindowEffects();
@@ -104,14 +116,61 @@ public partial class MainWindow : Window
 
     async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        _lyrics = new SpotifyLyrics(Http, Dispatcher, () => hwnd);
-
+        EnsureLyrics();
         if (!_settings.AcceptedDisclaimer && !SkipDisclaimer) DisclaimerOverlay.Visibility = Visibility.Visible;
         if (!Secrets.HasAll()) ShowMissingGuides();
+        await CheckUpdatesOnceAsync();
+    }
 
-        if (_settings.CheckUpdates && !SkipDisclaimer)
-            ShowStatus(await Updater.CheckAsync(Http));
+    void EnsureLyrics()
+    {
+        if (_lyrics is not null) return;
+        var hwnd = new WindowInteropHelper(this).EnsureHandle();
+        _lyrics = new SpotifyLyrics(Http, Dispatcher, () => hwnd);
+    }
+
+    async Task CheckUpdatesOnceAsync()
+    {
+        if (_checkedUpdates || !_settings.CheckUpdates || SkipDisclaimer) return;
+        _checkedUpdates = true;
+        ShowStatus(await Updater.CheckAsync(Http));
+    }
+
+    // Started with Windows: stay in the tray and, if everything is set up, start sharing on our own.
+    public async void StartInTray()
+    {
+        if (!_settings.AcceptedDisclaimer || !Secrets.HasAll()) { Show(); return; }
+        EnsureLyrics();
+        if (_settings.ShareOnStartup) ShareToggle_Click(this, new RoutedEventArgs());
+        await CheckUpdatesOnceAsync();
+    }
+
+    public void ShowFromTray()
+    {
+        if (_quitting) return;
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    void HideToTray()
+    {
+        Hide();
+        if (_settings.TrayHintShown) return;
+        _tray.Tell("Lyricat is here!", "I'll stay in the background to save resources. Right-click this icon if you want me to quit.");
+        lock (_settingsLock) _settings.TrayHintShown = true;
+        SaveSettingsQuietly();
+    }
+
+    public void Quit()
+    {
+        _quitting = true;
+        Close();
+    }
+
+    void SaveSettingsQuietly()
+    {
+        try { lock (_settingsLock) _settings.Save(); } catch (Exception) { }
     }
 
     void ApplyWindowEffects()
@@ -136,10 +195,17 @@ public partial class MainWindow : Window
     }
 
     void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
-    void Close_Click(object sender, RoutedEventArgs e) => Close();
+    void Close_Click(object sender, RoutedEventArgs e) => HideToTray();
+    void Quit_Click(object sender, RoutedEventArgs e) => Quit();
 
     async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (!_quitting)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
         _beats.Stop();
         if (_runTask is null || _runTask.IsCompleted || _closing) return;
         e.Cancel = true;
@@ -219,6 +285,7 @@ public partial class MainWindow : Window
         ShareToggle.BorderBrush = (Brush)FindResource(on && !busy ? "Primary" : "Line");
         var track = ((SolidColorBrush)FindResource(busy ? "Questionable" : on ? "Safe" : "Dangerous")).Color;
         ShareTrackColor.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(track, TimeSpan.FromMilliseconds(200)));
+        _tray.SetSharing(text, on, busy);
         ShareKnobMove.BeginAnimation(TranslateTransform.XProperty,
             new DoubleAnimation(on ? 16 : 0, TimeSpan.FromMilliseconds(160)));
     }
@@ -299,7 +366,9 @@ public partial class MainWindow : Window
                 if (stopped.Error is not null)
                 {
                     AppendLog(stopped.Error);
-                    if (!_closing) MessageBox.Show(this, stopped.Error, "Lyricat", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    if (_closing) break;
+                    if (IsVisible) MessageBox.Show(this, stopped.Error, "Lyricat", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    else _tray.Tell("Lyricat stopped sharing", stopped.Error);
                 }
                 break;
         }
@@ -894,6 +963,9 @@ public partial class MainWindow : Window
         (_settings.Mascot == Mascots.Dracani ? MascotDracani : MascotConcept).IsChecked = true;
         EarsDance.IsChecked = _settings.EarsDance;
         ReduceMotion.IsChecked = _settings.ReduceMotion;
+        StartWithWindows.IsChecked = AutoStart.IsEnabled;
+        ShareOnStartup.IsChecked = _settings.ShareOnStartup;
+        ShowStartup();
         ShowMascot(_settings.Mascot);
         UpdatePulse();
         ShowSeparator();
@@ -969,12 +1041,38 @@ public partial class MainWindow : Window
             _settings.Mascot = MascotDracani.IsChecked == true ? Mascots.Dracani : Mascots.Concept;
             _settings.EarsDance = EarsDance.IsChecked == true;
             _settings.ReduceMotion = ReduceMotion.IsChecked == true;
+            _settings.ShareOnStartup = ShareOnStartup.IsChecked == true;
         }
         ShowMascot(_settings.Mascot);
         UpdatePulse();
         ShowSeparator();
         _saveTimer.Stop();
         _saveTimer.Start();
+    }
+
+    void StartWithWindows_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        try
+        {
+            AutoStart.Set(StartWithWindows.IsChecked == true);
+            Toast_Show(StartWithWindows.IsChecked == true ? "Lyricat will start with Windows" : "Lyricat won't start with Windows");
+        }
+        catch (Exception ex)
+        {
+            Toast_Show($"Couldn't change it: {ex.Message}");
+            _loading = true;
+            StartWithWindows.IsChecked = AutoStart.IsEnabled;
+            _loading = false;
+        }
+        ShowStartup();
+    }
+
+    void ShowStartup()
+    {
+        var on = StartWithWindows.IsChecked == true;
+        ShareOnStartup.IsEnabled = on;
+        ShareOnStartup.Opacity = on ? 1 : 0.45;
     }
 
     void ShowMascot(string mascot)
@@ -1000,7 +1098,7 @@ public partial class MainWindow : Window
     {
         bool want;
         lock (_settingsLock)
-            want = !_demo && _settings.Mascot == Mascots.Dracani && _settings.EarsDance && WindowState != WindowState.Minimized;
+            want = !_demo && _settings.Mascot == Mascots.Dracani && _settings.EarsDance && IsVisible && WindowState != WindowState.Minimized;
         if (want == _beatTimer.IsEnabled) return;
         if (want) { _clock.Reset(); _beats.Start(); _beatTimer.Start(); }
         else { _beats.Stop(); _beatTimer.Stop(); }
@@ -1131,6 +1229,7 @@ public partial class MainWindow : Window
             _settings.Mascot = defaults.Mascot;
             _settings.EarsDance = defaults.EarsDance;
             _settings.ReduceMotion = defaults.ReduceMotion;
+            _settings.ShareOnStartup = defaults.ShareOnStartup;
         }
         LoadSettingsIntoForm();
         SaveSettings();
@@ -1184,6 +1283,7 @@ public partial class MainWindow : Window
         {
             if (_runTask is { IsCompleted: false }) { _run?.Cancel(); await _runTask; }
             await Updater.ApplyAsync(Http, _release);
+            _quitting = true;
             Application.Current.Shutdown();
         }
         catch (Exception ex)

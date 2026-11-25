@@ -65,6 +65,8 @@ public sealed class Settings
     [JsonPropertyName("mascot")] public string Mascot { get; set; } = Mascots.Dracani;
     [JsonPropertyName("ears_dance")] public bool EarsDance { get; set; } = true;
     [JsonPropertyName("reduce_motion")] public bool ReduceMotion { get; set; }
+    [JsonPropertyName("share_on_startup")] public bool ShareOnStartup { get; set; } = true;
+    [JsonPropertyName("tray_hint_shown")] public bool TrayHintShown { get; set; }
     [JsonPropertyName("accepted_disclaimer")] public bool AcceptedDisclaimer { get; set; }
 
     public const double MinInterval = 1.0, MaxInterval = 10.0;

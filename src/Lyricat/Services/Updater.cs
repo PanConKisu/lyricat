@@ -13,6 +13,8 @@ public static class Updater
 {
     public const string Repo = "PanConKisu/lyricat";
     const string ExeName = "Lyricat.exe";
+    public const string UpdatedFlag = "--updated";
+    public const string InstallerId = "{1663F824-1D7F-4ADC-8F2D-BDFD697D6A74}";
 
     public static Version Current =>
         Assembly.GetEntryAssembly()?.GetName().Version is { } v ? new Version(v.Major, v.Minor, v.Build) : new(0, 0, 0);
@@ -73,7 +75,20 @@ public static class Updater
         if (File.Exists(old)) File.Delete(old);
         File.Move(exe, old);
         File.Move(fresh, exe);
-        Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
+        MarkInstalledVersion(release.Version);
+        Process.Start(new ProcessStartInfo(exe, UpdatedFlag) { UseShellExecute = true });
+    }
+
+    // Installed copies show their version in "Installed apps"; keep it right after updating in place.
+    static void MarkInstalledVersion(Version version)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                $@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{InstallerId}_is1", writable: true);
+            key?.SetValue("DisplayVersion", version.ToString());
+        }
+        catch (Exception) { }
     }
 
     public static void CleanupOld()

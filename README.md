@@ -14,6 +14,7 @@
 - When you stop it, your usual status comes back.
 - Ninu, the cat on top of the player, can dance to the beat of whatever you're listening to.
 - Tempo, energy, danceability and speechiness of the current song, with a little heart beating at the song's BPM.
+- Can start with Windows and wait quietly in the tray, sharing your lyrics without opening anything.
 - Updates are verified with SHA256 before they're installed, and only when you click Update.
 
 > [!CAUTION]
@@ -34,10 +35,14 @@
 
 ## Install
 
-1. Download `Lyricat.exe` from the [latest release](../../releases/latest).
-2. Open it. That's it — no installer.
+Grab one of these from the [latest release](../../releases/latest):
 
-The `.exe` is built by GitHub Actions straight from this code ([see the workflow](.github/workflows/release.yml)), and every release ships its SHA256 checksum so you can verify it.
+- **`Lyricat-Setup.exe`** (installer): installs Lyricat for your user only (no admin needed), adds it to the Start menu and can start it with Windows. It shows up in *Installed apps* so you can uninstall it like any other program.
+- **`Lyricat.exe`** (portable): a single file you can keep anywhere and just open. You can still turn on *Start with Windows* in *Settings*.
+
+Both update themselves the same way. Closing the window keeps Lyricat in the tray (next to the clock); right-click its icon and choose *Quit* to close it for real.
+
+Both files are built by GitHub Actions straight from this code ([see the workflow](.github/workflows/release.yml)), and every release ships their SHA256 checksums so you can verify them.
 
 > **Windows SmartScreen warns you?** The app isn't code-signed (certificates are expensive for a hobby project). Click *More info → Run anyway*, or build it yourself (below).
 
@@ -75,6 +80,8 @@ The first time you turn on **Sharing** (bottom left), your browser opens so you 
 | Show two lines at once | Off | Sends lines in pairs as one status, joined by a separator (`-` by default) |
 | Stop if Discord rate-limits me | On | Stops at the first 429 |
 | Check for updates on startup | On | Only checks; nothing installs without your click |
+| Start with Windows | Off | Opens Lyricat in the tray when you sign in |
+| Start sharing right away | On | When it starts with Windows, it starts sharing on its own |
 | Who peeks over the card | Ninu by Dracani | Ninu by Dracani or Ninu Concept |
 | Ninu dances to the music | On | Ninu by Dracani moves her ears to the beat, and her head and paws too on high-energy songs |
 | Reduce motion | Off | Stops the BPM heart and the sliding bars (Ninu's dance has its own switch) |
@@ -111,7 +118,7 @@ git tag v3.9.1
 git push origin v3.9.1
 ```
 
-GitHub Actions builds the `.exe`, runs its self-test and creates the release with its checksum. Anyone using the app sees the update button next time they open it.
+GitHub Actions builds the `.exe` and the installer (with [Inno Setup](https://jrsoftware.org/isinfo.php), script in [`installer/`](installer/Lyricat.iss)), tests both and creates the release with their checksums. Anyone using the app sees the update button next time they open it.
 
 ## Credits
 

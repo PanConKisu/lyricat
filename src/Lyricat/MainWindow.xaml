@@ -461,6 +461,22 @@
                                     <TextBlock Text="Only checks. Nothing installs without your click." FontSize="11" Foreground="{StaticResource Muted}" />
                                 </StackPanel>
                             </CheckBox>
+                            <CheckBox x:Name="StartWithWindows" Style="{StaticResource Switch}" Margin="0,14,0,0"
+                                      Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed">
+                                <StackPanel>
+                                    <TextBlock Text="Start with Windows" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                                               Text="Lyricat opens quietly in the tray when you sign in. Click the tray icon to see it." />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox x:Name="ShareOnStartup" Style="{StaticResource Switch}" Margin="0,14,0,0"
+                                      Checked="Setting_Changed" Unchecked="Setting_Changed">
+                                <StackPanel>
+                                    <TextBlock Text="Start sharing right away" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                                               Text="When Lyricat starts with Windows, your lyrics go to Discord without opening anything." />
+                                </StackPanel>
+                            </CheckBox>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,14,0,0">
@@ -600,7 +616,7 @@
                     <TextBlock x:Name="DisclaimerText" Style="{StaticResource Hint}" FontSize="13" Margin="0,10,0,0"
                                Foreground="{StaticResource Text}" LineHeight="20" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
-                        <Button Style="{StaticResource SoftButton}" Content="Quit" Click="Close_Click" />
+                        <Button Style="{StaticResource SoftButton}" Content="Quit" Click="Quit_Click" />
                         <Button Style="{StaticResource PrimaryButton}" Content="I understand, let's go" Click="AcceptDisclaimer_Click"
                                 Margin="10,0,0,0" />
                     </StackPanel>

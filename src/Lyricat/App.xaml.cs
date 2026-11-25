@@ -5,6 +5,10 @@ namespace LyricsStatus;
 
 public partial class App : Application
 {
+    const string InstanceName = "Kiisum.Lyricat";
+    Mutex? _instance;
+    EventWaitHandle? _wake;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -42,9 +46,47 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Contains("--forget"))
+        {
+            AutoStart.Forget();
+            Shutdown(0);
+            return;
+        }
+
+        _instance = new Mutex(false, InstanceName);
+        var waitFor = e.Args.Contains(Updater.UpdatedFlag) ? TimeSpan.FromSeconds(15) : TimeSpan.Zero;
+        bool owned;
+        try { owned = _instance.WaitOne(waitFor); }
+        catch (AbandonedMutexException) { owned = true; }
+        if (!owned)
+        {
+            try { EventWaitHandle.OpenExisting(InstanceName + ".Show").Set(); } catch (Exception) { }
+            Shutdown(0);
+            return;
+        }
+
         Updater.CleanupOld();
         try { Paths.MoveOldData(); } catch (Exception) { /* not critical */ }
         try { Secrets.MigrateLegacy(); } catch (Exception) { /* not critical */ }
-        new MainWindow().Show();
+        AutoStart.Refresh();
+
+        var window = new MainWindow();
+        _wake = new EventWaitHandle(false, EventResetMode.AutoReset, InstanceName + ".Show");
+        ThreadPool.RegisterWaitForSingleObject(_wake, (_, _) => Dispatcher.BeginInvoke(window.ShowFromTray), null, -1, false);
+        SessionEnding += (_, _) => window.Quit();
+
+        if (e.Args.Contains(AutoStart.Flag)) window.StartInTray();
+        else window.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        if (_instance is not null)
+        {
+            try { _instance.ReleaseMutex(); } catch (Exception) { }
+            _instance.Dispose();
+        }
+        _wake?.Dispose();
+        base.OnExit(e);
     }
 }

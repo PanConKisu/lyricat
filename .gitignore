@@ -10,3 +10,4 @@ dist/
 .env
 .spotify_oauth.json
 config.json
+installer/output/

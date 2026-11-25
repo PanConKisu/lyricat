@@ -111,7 +111,7 @@ public static class SelfTest
             var w = new MainWindow { ShowActivated = false, Left = -4000, Top = -4000, SkipDisclaimer = true };
             w.Show();
             await Task.Delay(500);
-            w.Close();
+            w.Quit();
             return "opened and closed";
         });
 
@@ -151,7 +151,7 @@ public static class SelfTest
         w.ShowDisclaimerForDemo();
         await Task.Delay(450);
         Save(w, Path.Combine(folder, "disclaimer.png"));
-        w.Close();
+        w.Quit();
     }
 
     static void Save(System.Windows.Window w, string path)
