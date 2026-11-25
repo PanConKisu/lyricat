@@ -56,9 +56,12 @@ Type: files; Name: "{app}\Lyricat.exe.new"
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Code: Integer;
+  Command: String;
 begin
   if CurUninstallStep <> usUninstall then exit;
-  RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Lyricat');
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Lyricat', Command) and
+     (Pos(Lowercase(ExpandConstant('{app}')), Lowercase(Command)) > 0) then
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Lyricat');
   if UninstallSilent then exit;
   if MsgBox('Also delete your saved accounts, settings and stats?' #13#10#13#10 +
             'Choose No if you plan to install Lyricat again and want to keep them.',
