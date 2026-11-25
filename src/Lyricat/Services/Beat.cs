@@ -155,14 +155,14 @@ public sealed class BeatListener : IDisposable
     static readonly Stopwatch Clock = Stopwatch.StartNew();
     public static double Now => Clock.Elapsed.TotalSeconds;
 
-    WasapiLoopbackCapture? _capture;
+    WasapiRecorder? _capture;
     BeatTracker? _tracker;
     float[] _mono = [];
     double _rate;
+    int _channels;
     double _quietSince = -1;
     volatile BeatGrid? _grid;
     bool _wanted;
-
     double? _tempo;
 
     public BeatGrid? Grid => _grid;
@@ -182,17 +182,8 @@ public sealed class BeatListener : IDisposable
         if (_capture is not null) return;
         try
         {
-            var capture = new WasapiLoopbackCapture();
-            var format = capture.WaveFormat;
-            if (format.Encoding != WaveFormatEncoding.IeeeFloat && format.Encoding != WaveFormatEncoding.Extensible
-                || format.BitsPerSample != 32)
-            {
-                capture.Dispose();
-                Log?.Invoke($"Ears: unsupported audio format ({format}).");
-                return;
-            }
-            _rate = format.SampleRate;
-            _tracker = new BeatTracker(format.SampleRate) { TempoHint = _tempo };
+            var capture = new WasapiRecorderBuilder().WithLoopbackCapture().Build();
+            _tracker = null;
             capture.DataAvailable += OnData;
             capture.RecordingStopped += OnStopped;
             _capture = capture;
@@ -225,19 +216,21 @@ public sealed class BeatListener : IDisposable
         Start();
     }
 
-    void OnData(object? sender, WaveInEventArgs e)
+    void OnData(ReadOnlySpan<byte> buffer, AudioClientBufferFlags flags, long devicePosition, long qpcPosition)
     {
-        var tracker = _tracker;
-        if (tracker is null || sender is not WasapiCapture capture) return;
-        var channels = capture.WaveFormat.Channels;
-        var samples = MemoryMarshalCast(e.Buffer, e.BytesRecorded);
+        var tracker = _tracker ?? CreateTracker();
+        if (tracker is null) return;
+        var channels = _channels;
+        var silent = flags.HasFlag(AudioClientBufferFlags.Silent);
+        var samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(buffer[..(buffer.Length - buffer.Length % 4)]);
         var frames = samples.Length / channels;
         if (_mono.Length < frames) _mono = new float[frames];
         double peak = 0;
         for (var f = 0; f < frames; f++)
         {
             float sum = 0;
-            for (var c = 0; c < channels; c++) sum += samples[f * channels + c];
+            if (!silent)
+                for (var c = 0; c < channels; c++) sum += samples[f * channels + c];
             var v = sum / channels;
             _mono[f] = v;
             if (Math.Abs(v) > peak) peak = Math.Abs(v);
@@ -252,8 +245,19 @@ public sealed class BeatListener : IDisposable
         _grid = tracker.Grid is { Confidence: > 0.25 } g ? g : null;
     }
 
-    static ReadOnlySpan<float> MemoryMarshalCast(byte[] buffer, int bytes) =>
-        System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(buffer.AsSpan(0, bytes - bytes % 4));
+    BeatTracker? CreateTracker()
+    {
+        if (_capture?.WaveFormat is not { } format) return null;
+        if (format.BitsPerSample != 32 || format.Encoding is not (WaveFormatEncoding.IeeeFloat or WaveFormatEncoding.Extensible))
+        {
+            Log?.Invoke($"Ears: unsupported audio format ({format}).");
+            ThreadPool.QueueUserWorkItem(_ => Stop());
+            return null;
+        }
+        _rate = format.SampleRate;
+        _channels = format.Channels;
+        return _tracker = new BeatTracker(format.SampleRate) { TempoHint = _tempo };
+    }
 
     void OnStopped(object? sender, StoppedEventArgs e)
     {
