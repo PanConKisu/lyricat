@@ -215,10 +215,10 @@ public partial class MainWindow : Window
     {
         ShareText.Text = text;
         ShareToggle.IsEnabled = !busy || text == "Starting...";
-        ShareDot.Fill = (Brush)FindResource(busy ? "Questionable" : on ? "Safe" : "Faint");
         ShareToggle.Background = (Brush)FindResource(on && !busy ? "PrimarySoft" : "Surface");
         ShareToggle.BorderBrush = (Brush)FindResource(on && !busy ? "Primary" : "Line");
-        ShareTrack.Background = on ? (Brush)FindResource("Primary") : new SolidColorBrush(Color.FromRgb(0x4A, 0x3F, 0x72));
+        var track = ((SolidColorBrush)FindResource(busy ? "Questionable" : on ? "Safe" : "Dangerous")).Color;
+        ShareTrackColor.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(track, TimeSpan.FromMilliseconds(200)));
         ShareKnobMove.BeginAnimation(TranslateTransform.XProperty,
             new DoubleAnimation(on ? 16 : 0, TimeSpan.FromMilliseconds(160)));
     }
@@ -1232,6 +1232,9 @@ public partial class MainWindow
         (() => NavSettings.IsChecked = true, "settings"),
         (() => { NavSettings.IsChecked = true; PageSettings.ScrollToEnd(); }, "settings-bottom"),
         (() => NavAbout.IsChecked = true, "about"),
+        (() => { NavNow.IsChecked = true; SetShareState("Not sharing", on: false, busy: false); }, "share-off"),
+        (() => SetShareState("Starting...", on: true, busy: true), "share-starting"),
+        (() => SetShareState("Sharing", on: true, busy: false), "share-on"),
         (() => { NavAbout.IsChecked = true; PageAbout.ScrollToVerticalOffset(330); }, "about-version"),
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 0; EarATurn.Angle = 0; }, "now-playing-dracani"),
         (() => { NavNow.IsChecked = true; _demo = true; ShowMascot(Mascots.Dracani); EarBTurn.Angle = 9; EarATurn.Angle = -9; }, "now-playing-dracani-ears"),
