@@ -277,6 +277,7 @@ public partial class MainWindow : Window
                 break;
 
             case FeaturesEvent f:
+                _tempoAnchor = null;
                 _beats.SetTempo(f.Features.Tempo);
                 _energy = f.Features.Energy;
                 ShowFeatures(f.Features);
@@ -1006,9 +1007,22 @@ public partial class MainWindow : Window
         UpdatePulse();
     }
 
+    double? _tempoAnchor;
+
+    // Nothing heard (Spotify playing on another device, or the audio capture failed):
+    // keep dancing at Spotify's tempo, just without knowing where the beats land.
+    BeatGrid? TempoOnlyGrid()
+    {
+        if (_features.Tempo is not { } bpm || _playback is not { IsPlaying: true }) return null;
+        while (bpm > 160) bpm /= 2;
+        while (bpm < 60) bpm *= 2;
+        _tempoAnchor ??= BeatListener.Now;
+        return new BeatGrid(60 / bpm, _tempoAnchor.Value, 0);
+    }
+
     void BeatTick()
     {
-        var grid = _beats.Grid;
+        var grid = _beats.Grid ?? TempoOnlyGrid();
         var now = BeatListener.Now;
         var rise = grid is null ? 0 : Math.Min(0.21, grid.Period * 0.4);
         if (_clock.Tick(now, grid, rise + 0.008, OutputLatency) is not { } beat) return;
