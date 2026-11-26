@@ -308,6 +308,8 @@ public partial class MainWindow : Window
                 _songSeconds = 0;
                 ShowStats();
                 ShowPlayback(t.Playback);
+                _songLines = t.Lines;
+                _showingPaused = false;
                 _carousel.SetSong(t.Lines, CurrentSettings().NoLyricsText);
                 break;
 
@@ -316,6 +318,11 @@ public partial class MainWindow : Window
                 break;
 
             case LineEvent l:
+                if (_showingPaused)
+                {
+                    _showingPaused = false;
+                    _carousel.SetSong(_songLines, CurrentSettings().NoLyricsText);
+                }
                 _carousel.SetFallback(l.StatusText);
                 _carousel.MoveTo(l.Index, l.GroupStart, l.GroupEnd);
                 break;
@@ -339,6 +346,7 @@ public partial class MainWindow : Window
 
             case PausedEvent:
                 _progressTimer.Stop();
+                _showingPaused = true;
                 _carousel.SetSong([], "Paused");
                 DiscordStatus.Text = string.IsNullOrWhiteSpace(_settings.PausedText) ? "(your usual status)" : _settings.PausedText;
                 break;
@@ -374,6 +382,8 @@ public partial class MainWindow : Window
         }
     }
 
+    IReadOnlyList<LyricLine> _songLines = [];
+    bool _showingPaused;
     int _songChanges;
     double _songSeconds;
 
@@ -1324,9 +1334,22 @@ public partial class MainWindow
         ShowFeatures(new TrackFeatures(128, 0.84, 0.71, 0.06));
     }
 
+    void DemoResume()
+    {
+        var song = new Playback("demo", "A Song Title", "Some Artist", null, 84_000, 211_000, true, DateTime.UtcNow);
+        var lines = new[] { "first line", "second line", "third line", "the line after the pause", "and the next one" }
+            .Select((t, i) => new LyricLine(i * 3, t)).ToList();
+        OnEngine(new TrackEvent(song, lines));
+        OnEngine(new LineEvent(2, 2, 2, "third line"));
+        OnEngine(new PausedEvent());
+        OnEngine(new LineEvent(3, 3, 4, "the line after the pause | and the next one"));
+        _progressTimer.Stop();
+    }
+
     internal IEnumerable<(Action Show, string Name)> DemoPages() =>
     [
         (() => NavNow.IsChecked = true, "now-playing"),
+        (() => { NavNow.IsChecked = true; DemoResume(); }, "now-playing-resumed"),
         (() => { NavAccounts.IsChecked = true; DemoAccounts(); }, "accounts"),
         (() => { DemoMissing(); }, "accounts-missing"),
         (() => NavSettings.IsChecked = true, "settings"),
