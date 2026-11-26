@@ -84,6 +84,7 @@ The first time you turn on **Sharing** (bottom left), your browser opens so you 
 | Start sharing right away | On | When it starts with Windows, it starts sharing on its own |
 | Who peeks over the card | Ninu by Dracani | Ninu by Dracani or Ninu Concept |
 | Ninu dances to the music | On | Ninu by Dracani moves her ears to the beat, and her head and paws too on high-energy songs |
+| Fastest dance | `160 BPM` | Songs faster than this are danced at half speed (the BPM heart keeps the real tempo) |
 | Reduce motion | Off | Stops the BPM heart and the sliding bars (Ninu's dance has its own switch) |
 
 Settings save and apply instantly, even while it's running. They live in `%APPDATA%\Kiisum!\Lyricat`.

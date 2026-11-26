@@ -91,6 +91,9 @@ public static class SelfTest
                 if (off > 0.04) throw new Exception($"beats {off * 1000:0} ms off");
                 results.Add($"{(hint is null ? "guessed" : "told")} {g.Bpm:0.0} BPM, {off * 1000:0} ms off");
             }
+            if (BeatTracker.Fold(175, 160) != 87.5 || BeatTracker.Fold(175, 180) != 175 || BeatTracker.Fold(40, 160) != 80)
+                throw new Exception("tempo folding is off");
+            results.Add("max BPM respected");
             var clock = new BeatClock();
             var jitter = new Random(3);
             var beats = new List<double>();

@@ -64,12 +64,14 @@ public sealed class Settings
     [JsonPropertyName("join_separator")] public string JoinSeparator { get; set; } = "-";
     [JsonPropertyName("mascot")] public string Mascot { get; set; } = Mascots.Dracani;
     [JsonPropertyName("ears_dance")] public bool EarsDance { get; set; } = true;
+    [JsonPropertyName("max_dance_bpm")] public double MaxDanceBpm { get; set; } = BeatTracker.DefaultMaxBpm;
     [JsonPropertyName("reduce_motion")] public bool ReduceMotion { get; set; }
     [JsonPropertyName("share_on_startup")] public bool ShareOnStartup { get; set; } = true;
     [JsonPropertyName("tray_hint_shown")] public bool TrayHintShown { get; set; }
     [JsonPropertyName("accepted_disclaimer")] public bool AcceptedDisclaimer { get; set; }
 
     public const double MinInterval = 1.0, MaxInterval = 10.0;
+    public const double MinDanceBpm = 120, MaxDanceBpmLimit = 240;
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -105,6 +107,7 @@ public sealed class Settings
     {
         UpdateInterval = Math.Round(Math.Clamp(UpdateInterval, MinInterval, MaxInterval) * 2) / 2;
         LyricsOffset = Math.Round(Math.Clamp(LyricsOffset, -3, 3), 1);
+        MaxDanceBpm = Math.Round(Math.Clamp(MaxDanceBpm, MinDanceBpm, MaxDanceBpmLimit) / 5) * 5;
         StatusFormat = string.IsNullOrWhiteSpace(StatusFormat) ? "{line}" : StatusFormat;
         Emoji ??= ""; NoLyricsText ??= ""; PauseText ??= ""; PausedText ??= ""; JoinSeparator ??= "-";
         if (Mascot is not (Mascots.Concept or Mascots.Dracani)) Mascot = Mascots.Dracani;

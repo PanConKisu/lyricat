@@ -13,7 +13,7 @@ public sealed class BeatTracker
 {
     const double Fps = 100;
     const int History = 600;
-    const double MinBpm = 70, MaxBpm = 180;
+    const double MinBpm = 70, SearchMaxBpm = 180;
 
     readonly int _hop;
     readonly double[] _env = new double[History];
@@ -33,6 +33,23 @@ public sealed class BeatTracker
     {
         get => Volatile.Read(ref _hintBpm) is > 0 and var v ? v : null;
         set => Volatile.Write(ref _hintBpm, value ?? 0);
+    }
+
+    double _maxBpm = DefaultMaxBpm;
+    public const double DefaultMaxBpm = 160;
+
+    // Songs faster than this are followed at half speed (or a quarter, and so on).
+    public double MaxBpm
+    {
+        get => Volatile.Read(ref _maxBpm);
+        set => Volatile.Write(ref _maxBpm, value);
+    }
+
+    public static double Fold(double bpm, double max)
+    {
+        while (bpm > max) bpm /= 2;
+        while (bpm < 60) bpm *= 2;
+        return bpm;
     }
 
     public BeatTracker(int sampleRate)
@@ -94,9 +111,7 @@ public sealed class BeatTracker
         double confidence;
         if (TempoHint is { } hint)
         {
-            while (hint > 160) hint /= 2;
-            while (hint < 60) hint *= 2;
-            _period = 60 / hint;
+            _period = 60 / Fold(hint, MaxBpm);
             confidence = 1;
         }
         else if (EstimatePeriod(e, n, zero) is { } estimate)
@@ -119,7 +134,8 @@ public sealed class BeatTracker
 
     (double Period, double Confidence)? EstimatePeriod(double[] e, int n, double zero)
     {
-        int minLag = (int)(Fps * 60 / MaxBpm), maxLag = (int)Math.Ceiling(Fps * 60 / MinBpm);
+        var max = MaxBpm;
+        int minLag = (int)(Fps * 60 / Math.Max(SearchMaxBpm, max)), maxLag = (int)Math.Ceiling(Fps * 60 / MinBpm);
         var ac = new double[maxLag + 2];
         for (var lag = minLag - 1; lag <= maxLag + 1; lag++)
         {
@@ -140,7 +156,7 @@ public sealed class BeatTracker
         double l = best, y0 = ac[best - 1], y1 = ac[best], y2 = ac[best + 1];
         var denom = y0 - 2 * y1 + y2;
         if (Math.Abs(denom) > 1e-12) l += 0.5 * (y0 - y2) / denom;
-        var period = l / Fps;
+        var period = 60 / Fold(Fps * 60 / l, max);
         var confidence = ac[best] / (zero / n);
 
         var smoothed = _period > 0 && Math.Abs(period - _period) / _period < 0.06
@@ -171,6 +187,14 @@ public sealed class BeatListener : IDisposable
     {
         _tempo = bpm;
         if (_tracker is { } t) t.TempoHint = bpm;
+    }
+
+    double _maxBpm = BeatTracker.DefaultMaxBpm;
+
+    public void SetMaxBpm(double bpm)
+    {
+        _maxBpm = bpm;
+        if (_tracker is { } t) t.MaxBpm = bpm;
     }
     public BeatGrid? RawGrid => _tracker?.Grid;
     public event Action<string>? Log;
@@ -256,7 +280,7 @@ public sealed class BeatListener : IDisposable
         }
         _rate = format.SampleRate;
         _channels = format.Channels;
-        return _tracker = new BeatTracker(format.SampleRate) { TempoHint = _tempo };
+        return _tracker = new BeatTracker(format.SampleRate) { TempoHint = _tempo, MaxBpm = _maxBpm };
     }
 
     void OnStopped(object? sender, StoppedEventArgs e)

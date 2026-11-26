@@ -972,6 +972,9 @@ public partial class MainWindow : Window
         SeparatorBox.Text = _settings.JoinSeparator;
         (_settings.Mascot == Mascots.Dracani ? MascotDracani : MascotConcept).IsChecked = true;
         EarsDance.IsChecked = _settings.EarsDance;
+        MaxBpmSlider.Value = _settings.MaxDanceBpm;
+        ShowMaxBpm(_settings.MaxDanceBpm);
+        _beats.SetMaxBpm(_settings.MaxDanceBpm);
         ReduceMotion.IsChecked = _settings.ReduceMotion;
         StartWithWindows.IsChecked = AutoStart.IsEnabled;
         ShareOnStartup.IsChecked = _settings.ShareOnStartup;
@@ -1026,6 +1029,18 @@ public partial class MainWindow : Window
         SeparatorPreview.Text = "e.g.  line one" + Engine.Separator(new Settings { JoinSeparator = SeparatorBox.Text }) + "line two";
     }
 
+    void MaxBpmSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        ShowMaxBpm(e.NewValue);
+        Setting_Changed(sender, e);
+    }
+
+    void ShowMaxBpm(double value)
+    {
+        if (MaxBpmValue is null) return;
+        MaxBpmValue.Text = $"{value:0} BPM";
+    }
+
     void ShowOffset(double value)
     {
         if (OffsetValue is null) return;
@@ -1050,9 +1065,11 @@ public partial class MainWindow : Window
             _settings.JoinSeparator = SeparatorBox.Text;
             _settings.Mascot = MascotDracani.IsChecked == true ? Mascots.Dracani : Mascots.Concept;
             _settings.EarsDance = EarsDance.IsChecked == true;
+            _settings.MaxDanceBpm = MaxBpmSlider.Value;
             _settings.ReduceMotion = ReduceMotion.IsChecked == true;
             _settings.ShareOnStartup = ShareOnStartup.IsChecked == true;
         }
+        _beats.SetMaxBpm(MaxBpmSlider.Value);
         ShowMascot(_settings.Mascot);
         UpdatePulse();
         ShowSeparator();
@@ -1091,6 +1108,9 @@ public partial class MainWindow : Window
         Mascot.Visibility = dracani ? Visibility.Collapsed : Visibility.Visible;
         DracaniRig.Visibility = dracani ? Visibility.Visible : Visibility.Collapsed;
         EarsDance.IsEnabled = dracani;
+        var dancing = dracani && EarsDance.IsChecked == true;
+        MaxBpmRow.IsEnabled = dancing;
+        MaxBpmRow.Opacity = dancing ? 1 : 0.45;
         UpdateEars();
     }
 
@@ -1122,11 +1142,13 @@ public partial class MainWindow : Window
     BeatGrid? TempoOnlyGrid()
     {
         if (_features.Tempo is not { } bpm || _playback is not { IsPlaying: true }) return null;
-        while (bpm > 160) bpm /= 2;
-        while (bpm < 60) bpm *= 2;
+        double max;
+        lock (_settingsLock) max = _settings.MaxDanceBpm;
         _tempoAnchor ??= BeatListener.Now;
-        return new BeatGrid(60 / bpm, _tempoAnchor.Value, 0);
+        return new BeatGrid(60 / BeatTracker.Fold(bpm, max), _tempoAnchor.Value, 0);
     }
+
+    int _heartSkip;
 
     void BeatTick()
     {
@@ -1136,7 +1158,17 @@ public partial class MainWindow : Window
         if (_clock.Tick(now, grid, rise + 0.008, OutputLatency) is not { } beat) return;
         var lead = Math.Max(0.06, beat - now);
         FlickEars(lead, Math.Min(0.25, grid!.Period * 0.5));
-        Task.Delay(TimeSpan.FromSeconds(Math.Max(0, lead - 0.08))).ContinueWith(_ => Dispatcher.BeginInvoke(PulseHeart));
+
+        // Ninu may dance at half (or double) speed, but the heart always beats at the song's real BPM:
+        // several heartbeats per dance beat, or one every few dance beats.
+        var octaves = _features.Tempo is { } song ? Math.Clamp((int)Math.Round(Math.Log2(song * grid.Period / 60)), -2, 2) : 0;
+        if (octaves < 0 && _heartSkip++ % (1 << -octaves) != 0) return;
+        var pulses = 1 << Math.Max(0, octaves);
+        for (var i = 0; i < pulses; i++)
+        {
+            var delay = lead + i * grid.Period / pulses - 0.08;
+            Task.Delay(TimeSpan.FromSeconds(Math.Max(0, delay))).ContinueWith(_ => Dispatcher.BeginInvoke(PulseHeart));
+        }
     }
 
     TrackFeatures _features = TrackFeatures.Unknown;
@@ -1238,6 +1270,7 @@ public partial class MainWindow : Window
             _settings.JoinSeparator = defaults.JoinSeparator;
             _settings.Mascot = defaults.Mascot;
             _settings.EarsDance = defaults.EarsDance;
+            _settings.MaxDanceBpm = defaults.MaxDanceBpm;
             _settings.ReduceMotion = defaults.ReduceMotion;
             _settings.ShareOnStartup = defaults.ShareOnStartup;
         }

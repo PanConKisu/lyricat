@@ -497,6 +497,23 @@
                                                Text="Ninu by Dracani only. Her ears follow the beat, and with high-energy songs her head and paws join in. Listens to what your PC is playing to find the beat; nothing is recorded or saved." />
                                 </StackPanel>
                             </CheckBox>
+                            <Grid x:Name="MaxBpmRow" Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Fastest dance" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock Text="Faster songs: half speed." FontSize="11" Foreground="{StaticResource Muted}" />
+                                </StackPanel>
+                                <Slider x:Name="MaxBpmSlider" Grid.Column="1" Style="{StaticResource CozySlider}"
+                                        Minimum="120" Maximum="240" TickFrequency="5" IsSnapToTickEnabled="True"
+                                        SmallChange="5" LargeChange="20"
+                                        Foreground="{StaticResource Primary}" ValueChanged="MaxBpmSlider_ValueChanged" />
+                                <TextBlock x:Name="MaxBpmValue" Grid.Column="2" Text="160 BPM" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Deep}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
                             <CheckBox x:Name="ReduceMotion" Style="{StaticResource Switch}" Margin="0,14,0,0"
                                       Checked="Setting_Changed" Unchecked="Setting_Changed">
                                 <StackPanel>
